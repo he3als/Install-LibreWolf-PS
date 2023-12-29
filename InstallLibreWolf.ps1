@@ -1,48 +1,47 @@
-# disable progress bars
 $ProgressPreference = "SilentlyContinue"
-# stop on errors, as each command is vital
 $ErrorActionPreference = "Stop"
 
+# Define variables
 $updaterPath = "$env:programfiles\LibreWolf\librewolf-winupdater"
 $librewolfPath = "$env:programfiles\LibreWolf"
 $desktop = [Environment]::GetFolderPath("Desktop")
-$startMenu = "$env:ProgramData\Microsoft\Windows\Start Menu\Programs"
+$startMenu = [Environment]::GetFolderPath("CommonPrograms")
 
-<# if (Test-Path $librewolfPath) {
-	Write-Host "A version of LibreWolf is seemingly already installed."
-	Write-Host "This script will not continue."
-	exit 1
-} #>
-
-Write-Warning "Getting the latest LibreWolf download link"
+# Get latest LibreWolf download link
+Write-Output "Getting the latest LibreWolf download link"
 $librewolfVersion = Invoke-RestMethod -Uri "https://gitlab.com/api/v4/projects/44042130/releases" | ForEach-Object { $_.name } | Select-Object -First 1
 $librewolfFileName = "librewolf-$librewolfVersion-windows-x86_64-setup.exe"
 $librewolfDownload = "https://gitlab.com/api/v4/projects/44042130/packages/generic/librewolf/$librewolfVersion/$librewolfFileName"
-Write-Warning "Getting the latest LibreWolf-WinUpdater download link"
+
+# Get latest LibreWolf-WinUpdater download link
+Write-Output "Getting the latest LibreWolf-WinUpdater download link"
 $librewolfUpdaterURI = "https://codeberg.org/api/v1/repos/ltguillaume/librewolf-winupdater/releases?draft=false&pre-release=false&page=1&limit=1"
 $librewolfUpdaterDownload = (Invoke-RestMethod -Uri "$librewolfUpdaterURI" -Headers @{ "accept" = "application/json" }).Assets |
 	Where-Object { $_.name -like "*.zip" } |
 	Select-Object -ExpandProperty browser_download_url
 
-# output paths
+# Output paths
 $outputLibrewolf = "$env:systemdrive\$librewolfFileName"
 $outputLibrewolfUpdater = "$env:systemdrive\librewolf-winupdater.zip"
 
-Write-Warning "Downloading the latest LibreWolf setup"
+# Download files
+Write-Output "Downloading the latest LibreWolf setup"
 Invoke-WebRequest -Uri $librewolfDownload -OutFile $outputLibrewolf
-Write-Warning "Downloading the latest LibreWolf WinUpdater ZIP"
+Write-Output "Downloading the latest LibreWolf WinUpdater ZIP"
 Invoke-WebRequest -Uri $librewolfUpdaterDownload -OutFile $outputLibrewolfUpdater
 
-Write-Warning "Installing LibreWolf silently"
+# Install LibreWolf & LibreWolf-WinUpdater
+Write-Output "Installing LibreWolf silently"
 Start-Process -Wait -FilePath $outputLibrewolf -ArgumentList "/S"
 if (!(Test-Path $librewolfPath)) {
 	Write-Host "Installing LibreWolf silently failed."
 	exit 1
 }
-Write-Warning "Installing/extracting Librewolf-WinUpdater"
+Write-Output "Installing/extracting Librewolf-WinUpdater"
 Expand-Archive -Path $outputLibrewolfUpdater -DestinationPath "$env:programfiles\LibreWolf\librewolf-winupdater" -Force
 
-Write-Warning "Adding automatic updater task"
+# Automatic updater
+Write-Output "Adding automatic updater task"
 $Title = "LibreWolf WinUpdater"
 $Action   = New-ScheduledTaskAction -Execute "$updaterPath\LibreWolf-WinUpdater.exe" -Argument "/Scheduled"
 $Settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -RunOnlyIfNetworkAvailable
@@ -52,8 +51,9 @@ $AtLogon.Delay = 'PT1M'
 $User = (Get-CimInstance -ClassName Win32_ComputerSystem | Select-Object -ExpandProperty UserName) -replace ".*\\"
 Register-ScheduledTask -TaskName "$Title ($User)" -Action $Action -Settings $Settings -Trigger $7Hours,$AtLogon -User $User -RunLevel Highest -Force | Out-Null
 
-Write-Warning "Creating shortcuts"
-function Create-Shortcut {
+# Shortcuts
+Write-Output "Creating shortcuts"
+function Add-Shortcut {
 	param ( [string]$Source, [string]$Destination, [string]$WorkingDir )
 	$WshShell = New-Object -comObject WScript.Shell
 	$Shortcut = $WshShell.CreateShortcut($Destination)
@@ -61,9 +61,10 @@ function Create-Shortcut {
 	$Shortcut.WorkingDirectory = $WorkingDir
 	$Shortcut.Save()
 }
-Create-Shortcut -Source "$librewolfPath\librewolf.exe" -Destination "$desktop\LibreWolf.lnk" -WorkingDir $librewolfPath
-Create-Shortcut -Source "$updaterPath\Librewolf-WinUpdater.exe" -Destination "$startMenu\LibreWolf\LibreWolf WinUpdater.lnk" -WorkingDir $librewolfPath
+Add-Shortcut -Source "$librewolfPath\librewolf.exe" -Destination "$desktop\LibreWolf.lnk" -WorkingDir $librewolfPath
+Add-Shortcut -Source "$updaterPath\Librewolf-WinUpdater.exe" -Destination "$startMenu\LibreWolf\LibreWolf WinUpdater.lnk" -WorkingDir $librewolfPath
 
-Write-Warning "Removing temporary installer files"
+# Temp files
+Write-Output "Removing temporary installer files"
 Remove-Item "$outputLibrewolf" -Force
 Remove-Item "$outputLibrewolfUpdater" -Force
